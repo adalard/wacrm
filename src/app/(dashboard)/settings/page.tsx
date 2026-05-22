@@ -75,6 +75,13 @@ export default function SettingsPage() {
             <Tag className="size-4" />
             Tags
           </TabsTrigger>
+          <TabsTrigger
+            value="developer"
+            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
+          >
+            <Terminal className="size-4" />
+            Developer API
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
@@ -93,6 +100,10 @@ export default function SettingsPage() {
 
         <TabsContent value="tags">
           <TagManager />
+        </TabsContent>
+
+        <TabsContent value="developer">
+          <DeveloperApiManager />
         </TabsContent>
       </Tabs>
     </div>
