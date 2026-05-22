@@ -5,6 +5,7 @@ import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { dispatchExternalWebhook } from '@/lib/api/webhooks'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -271,13 +272,30 @@ async function handleStatusUpdate(status: {
 }) {
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status.
-  const { error: msgErr } = await supabaseAdmin()
+  const { data: updatedMsg, error: msgErr } = await supabaseAdmin()
     .from('messages')
     .update({ status: status.status })
     .eq('message_id', status.id)
+    .select('*, conversations(user_id, contacts(phone))')
+    .maybeSingle()
 
   if (msgErr) {
     console.error('Error updating message status:', msgErr)
+  }
+
+  if (updatedMsg && updatedMsg.conversations?.user_id) {
+    void dispatchExternalWebhook(updatedMsg.conversations.user_id, 'message.status', {
+      id: updatedMsg.id,
+      conversation_id: updatedMsg.conversation_id,
+      sender_type: updatedMsg.sender_type,
+      content_type: updatedMsg.content_type,
+      content_text: updatedMsg.content_text,
+      media_url: updatedMsg.media_url,
+      message_id: updatedMsg.message_id,
+      status: updatedMsg.status,
+      created_at: updatedMsg.created_at,
+      phone: updatedMsg.conversations.contacts?.phone || status.recipient_id,
+    })
   }
 
   // 2) Mirror onto broadcast_recipients via whatsapp_message_id
@@ -522,7 +540,30 @@ async function processMessage(
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
-  const { error: msgError } = await supabaseAdmin().from('messages').insert({
+  const { data: insertedMsg, error: msgError } = await supabaseAdmin()
+    .from('messages')
+    .insert({
+      conversation_id: conversation.id,
+      sender_type: 'customer',
+      content_type: contentType,
+      content_text: contentText,
+      media_url: mediaUrl,
+      message_id: message.id,
+      status: 'delivered',
+      created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
+      reply_to_message_id: replyToInternalId,
+    })
+    .select()
+    .single()
+
+  if (msgError || !insertedMsg) {
+    console.error('Error inserting message:', msgError)
+    return
+  }
+
+  // Trigger external webhook
+  void dispatchExternalWebhook(userId, 'message.received', {
+    id: insertedMsg.id,
     conversation_id: conversation.id,
     sender_type: 'customer',
     content_type: contentType,
@@ -530,14 +571,9 @@ async function processMessage(
     media_url: mediaUrl,
     message_id: message.id,
     status: 'delivered',
-    created_at: new Date(parseInt(message.timestamp) * 1000).toISOString(),
-    reply_to_message_id: replyToInternalId,
+    created_at: insertedMsg.created_at,
+    phone: senderPhone,
   })
-
-  if (msgError) {
-    console.error('Error inserting message:', msgError)
-    return
-  }
 
   // Update conversation
   const { error: convError } = await supabaseAdmin()

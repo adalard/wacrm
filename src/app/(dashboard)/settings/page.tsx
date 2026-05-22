@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, MessageSquare, Tag, User } from 'lucide-react';
+import { Settings, MessageSquare, Tag, User, Terminal } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
 import { TemplateManager } from '@/components/settings/template-manager';
@@ -9,8 +9,9 @@ import { TagManager } from '@/components/settings/tag-manager';
 import { ProfileForm } from '@/components/settings/profile-form';
 import { PasswordForm } from '@/components/settings/password-form';
 import { SessionsCard } from '@/components/settings/sessions-card';
+import { DeveloperApiManager } from '@/components/settings/developer-api';
 
-const TAB_VALUES = ['profile', 'whatsapp', 'templates', 'tags'] as const;
+const TAB_VALUES = ['profile', 'whatsapp', 'templates', 'tags', 'developer'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function isTabValue(v: string | null): v is TabValue {

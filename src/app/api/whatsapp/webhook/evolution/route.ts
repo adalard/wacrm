@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizePhone, phonesMatch } from '@/lib/whatsapp/phone-utils'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { dispatchExternalWebhook } from '@/lib/api/webhooks'
 
 // Lazy-initialized admin Supabase client to bypass RLS for webhooks
 let _adminClient: any = null
@@ -154,7 +155,7 @@ async function handleInboundMessage(
   const isFirstInbound = (priorMsgCount ?? 0) === 0
 
   // Insert message into DB
-  const { error: insertError } = await db.from('messages').insert({
+  const { data: insertedMsg, error: insertError } = await db.from('messages').insert({
     conversation_id: conversation.id,
     sender_type: 'customer',
     content_type: contentType,
@@ -163,12 +164,26 @@ async function handleInboundMessage(
     message_id: messageId,
     status: 'delivered',
     created_at: new Date((data.messageTimestamp || Date.now() / 1000) * 1000).toISOString(),
-  })
+  }).select().single()
 
-  if (insertError) {
+  if (insertError || !insertedMsg) {
     console.error('[webhook/evolution] Failed to insert inbound message:', insertError)
     return
   }
+
+  // Trigger external webhook
+  void dispatchExternalWebhook(userId, 'message.received', {
+    id: insertedMsg.id,
+    conversation_id: conversation.id,
+    sender_type: 'customer',
+    content_type: contentType,
+    content_text: contentText,
+    media_url: mediaUrl,
+    message_id: messageId,
+    status: 'delivered',
+    created_at: insertedMsg.created_at,
+    phone: phone,
+  })
 
   // Update conversation unread counts and last message
   await db
@@ -238,7 +253,7 @@ async function syncOutboundMessage(db: any, userId: string, phone: string, messa
   const { contentText, mediaUrl, contentType } = parseEvolutionMessageContent(data)
 
   // Insert outgoing message
-  await db.from('messages').insert({
+  const { data: insertedMsg } = await db.from('messages').insert({
     conversation_id: conversation.id,
     sender_type: 'agent', // Or 'bot' if from automation, default 'agent' is safe
     content_type: contentType,
@@ -247,7 +262,23 @@ async function syncOutboundMessage(db: any, userId: string, phone: string, messa
     message_id: messageId,
     status: 'read', // Already read by sender
     created_at: new Date((data.messageTimestamp || Date.now() / 1000) * 1000).toISOString(),
-  })
+  }).select().single()
+
+  // Trigger external webhook
+  if (insertedMsg) {
+    void dispatchExternalWebhook(userId, 'message.sent', {
+      id: insertedMsg.id,
+      conversation_id: conversation.id,
+      sender_type: 'agent',
+      content_type: contentType,
+      content_text: contentText,
+      media_url: mediaUrl,
+      message_id: messageId,
+      status: 'read',
+      created_at: insertedMsg.created_at,
+      phone: phone,
+    })
+  }
 
   // Update conversation
   await db
@@ -265,13 +296,30 @@ async function handleStatusReceipt(db: any, messageId: string, statusVal: number
   if (!mappedStatus) return
 
   // Update messages table
-  const { error: msgErr } = await db
+  const { data: updatedMsg, error: msgErr } = await db
     .from('messages')
     .update({ status: mappedStatus })
     .eq('message_id', messageId)
+    .select('*, conversations(user_id, contacts(phone))')
+    .maybeSingle()
 
   if (msgErr) {
     console.error('[webhook/evolution] Error updating status in messages:', msgErr)
+  }
+
+  if (updatedMsg && updatedMsg.conversations?.user_id) {
+    void dispatchExternalWebhook(updatedMsg.conversations.user_id, 'message.status', {
+      id: updatedMsg.id,
+      conversation_id: updatedMsg.conversation_id,
+      sender_type: updatedMsg.sender_type,
+      content_type: updatedMsg.content_type,
+      content_text: updatedMsg.content_text,
+      media_url: updatedMsg.media_url,
+      message_id: updatedMsg.message_id,
+      status: updatedMsg.status,
+      created_at: updatedMsg.created_at,
+      phone: updatedMsg.conversations.contacts?.phone || null,
+    })
   }
 
   // Update broadcast_recipients status
