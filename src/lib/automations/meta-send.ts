@@ -1,5 +1,4 @@
-import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { getWhatsAppClient } from '@/lib/whatsapp/client-factory'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -9,14 +8,12 @@ import {
 import { supabaseAdmin } from './admin-client'
 
 // ------------------------------------------------------------
-// Automation-side Meta sender.
+// Automation-side polymorphic sender.
 //
 // Mirrors the logic in src/app/api/whatsapp/send/route.ts but uses
 // the service-role client (engine has no cookies) and accepts the
 // user / conversation / contact identifiers the engine already has
-// on hand. Kept here (rather than refactoring the user-facing send
-// route) to avoid risk to the working manual-send path — they can
-// converge in a later refactor.
+// on hand. Supported for both Meta and Evolution connection methods.
 // ------------------------------------------------------------
 
 interface SendTextArgs {
@@ -36,30 +33,23 @@ interface SendTemplateArgs {
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
-  return sendViaMeta({ ...args, kind: 'text' })
+  return sendViaWhatsApp({ ...args, kind: 'text' })
 }
 
 export async function engineSendTemplate(
   args: SendTemplateArgs,
 ): Promise<{ whatsapp_message_id: string }> {
-  return sendViaMeta({ ...args, kind: 'template' })
+  return sendViaWhatsApp({ ...args, kind: 'template' })
 }
 
 type SendInput =
   | (SendTextArgs & { kind: 'text' })
   | (SendTemplateArgs & { kind: 'template' })
 
-async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: string }> {
+async function sendViaWhatsApp(input: SendInput): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
 
-  // Scope the contact lookup by user_id. The engine uses the
-  // service-role client (bypassing RLS), and the public
-  // /api/automations/engine endpoint accepts contact_id from the
-  // request body — without this filter, an authenticated user could
-  // fire their own automations against another tenant's contact UUID
-  // and send via their own WhatsApp config to that contact's phone.
-  // Practical risk is low (UUIDs are unguessable) but the check is
-  // cheap defense-in-depth.
+  // Scope the contact lookup by user_id.
   const { data: contact, error: contactErr } = await db
     .from('contacts')
     .select('id, phone')
@@ -84,13 +74,12 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error('WhatsApp not configured for this account')
   }
 
-  const accessToken = decrypt(config.access_token)
+  const client = getWhatsAppClient(config, db)
+  const method = config.connection_method || 'meta'
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
-      const r = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const r = await client.sendTemplate({
         to: phone,
         templateName: input.templateName,
         language: input.language,
@@ -98,18 +87,14 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       })
       return r.messageId
     }
-    const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+    const r = await client.sendText({
       to: phone,
       text: input.text,
     })
     return r.messageId
   }
 
-  // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
-  // numbers registered with/without a trunk 0 both require this to
-  // reliably land a message.
+  // Same phone-variant retry as /api/whatsapp/send
   const variants = phoneVariants(sanitized)
   let workingPhone = sanitized
   let waMessageId = ''
@@ -122,7 +107,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       break
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
+      if (method === 'meta' && !isRecipientNotAllowedError(msg)) throw err
       lastError = err
     }
   }
@@ -132,9 +117,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
   }
 
-  // Persist the sent message so it appears in the inbox with a real
-  // Meta message id. sender_type='bot' distinguishes automation sends
-  // from manual agent sends.
+  // Persist the sent message so it appears in the inbox.
   const content_type = input.kind === 'template' ? 'template' : 'text'
   const content_text = input.kind === 'text' ? input.text : null
   const template_name = input.kind === 'template' ? input.templateName : null
@@ -149,9 +132,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     status: 'sent',
   })
   if (msgErr) {
-    // Meta already has the message; record the DB error but don't pretend
-    // the send failed. The engine wraps this in a log line.
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    throw new Error(`sent to WhatsApp but DB insert failed: ${msgErr.message}`)
   }
 
   await db

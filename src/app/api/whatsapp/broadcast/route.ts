@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt } from '@/lib/whatsapp/encryption'
+import { getWhatsAppClient } from '@/lib/whatsapp/client-factory'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -123,11 +122,13 @@ export async function POST(request: Request) {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
+    const client = getWhatsAppClient(config, supabase)
+    const method = config.connection_method || 'meta'
 
     const results: BroadcastResult[] = []
     let sentCount = 0
     let failedCount = 0
+    let isFirstSend = true
 
     for (const recipient of recipients) {
       const sanitized = sanitizePhoneForMeta(recipient.phone)
@@ -142,6 +143,15 @@ export async function POST(request: Request) {
         continue
       }
 
+      // Stagger broadcasts to prevent spam detection for Evolution API
+      if (method === 'evolution' && !isFirstSend) {
+        const baseDelay = 3000
+        const jitter = Math.floor(Math.random() * 1500) - 750 // -750 to +750
+        const delay = baseDelay + jitter
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+      isFirstSend = false
+
       // Retry with phone variants on "not in allowed list" so numbers
       // that differ only in a trunk-prefix 0 still reach recipients.
       const variants = phoneVariants(sanitized)
@@ -150,9 +160,7 @@ export async function POST(request: Request) {
 
       for (const variant of variants) {
         try {
-          const result = await sendTemplateMessage({
-            phoneNumberId: config.phone_number_id,
-            accessToken,
+          const result = await client.sendTemplate({
             to: variant,
             templateName: template_name,
             language: template_language || 'en_US',
@@ -164,7 +172,7 @@ export async function POST(request: Request) {
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : 'Unknown error'
-          if (!isRecipientNotAllowedError(errorMessage)) {
+          if (method === 'meta' && !isRecipientNotAllowedError(errorMessage)) {
             lastError = errorMessage
             break
           }

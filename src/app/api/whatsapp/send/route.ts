@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
-import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
+import { getWhatsAppClient } from '@/lib/whatsapp/client-factory'
+import { isLegacyFormat, encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Fetch and decrypt WhatsApp config
+    // Fetch WhatsApp config
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
       .select('*')
@@ -115,17 +115,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const accessToken = decrypt(config.access_token)
-
-    // Self-heal legacy CBC-encrypted tokens. Fire-and-forget: we
-    // return from the send without waiting, so a failed upgrade just
-    // means the next send tries again. The upgrade is idempotent —
-    // concurrent sends both produce valid GCM ciphertexts of the same
-    // plaintext, last write wins.
-    if (isLegacyFormat(config.access_token)) {
+    // Self-heal legacy CBC-encrypted Meta tokens.
+    if (config.connection_method === 'meta' && config.access_token && isLegacyFormat(config.access_token)) {
+      const decrypted = decryptSafely(config.access_token)
       void supabase
         .from('whatsapp_config')
-        .update({ access_token: encrypt(accessToken) })
+        .update({ access_token: encrypt(decrypted) })
         .eq('id', config.id)
         .then(({ error }) => {
           if (error) {
@@ -137,10 +132,7 @@ export async function POST(request: Request) {
         })
     }
 
-    // Resolve the reply target (if any) to its Meta message_id, which is
-    // what `context.message_id` on the outgoing Meta payload needs. The
-    // parent must belong to this same conversation — otherwise a caller
-    // could quote messages they can't see by guessing UUIDs.
+    // Resolve reply targets if quote context is specified
     let contextMessageId: string | undefined
     if (reply_to_message_id) {
       const { data: parent, error: parentError } = await supabase
@@ -157,30 +149,22 @@ export async function POST(request: Request) {
         )
       }
       if (!parent.message_id) {
-        // Parent never reached Meta (still in 'sending' or 'failed') — we
-        // can't quote it on WhatsApp. Send without context rather than
-        // dropping the message entirely.
         console.warn(
-          '[whatsapp/send] reply target has no Meta message_id; sending without context'
+          '[whatsapp/send] reply target has no WhatsApp message_id; sending without context'
         )
       } else {
         contextMessageId = parent.message_id
       }
     }
 
-    // Send via Meta API — retry with phone-number variants if Meta rejects
-    // with "recipient not in allowed list" (common in sandbox / when a
-    // number was registered with/without a trunk 0). If an alternate
-    // format succeeds, we persist it back to the contact row so the
-    // next send goes through on the first attempt.
+    // Polymorphically send through client factory
+    const client = getWhatsAppClient(config, supabase)
     let waMessageId = ''
     let workingPhone = sanitizedPhone
 
     const attempt = async (phone: string): Promise<string> => {
       if (message_type === 'template') {
-        const result = await sendTemplateMessage({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
+        const result = await client.sendTemplate({
           to: phone,
           templateName: template_name,
           params: template_params || [],
@@ -188,9 +172,7 @@ export async function POST(request: Request) {
         })
         return result.messageId
       }
-      const result = await sendTextMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+      const result = await client.sendText({
         to: phone,
         text: content_text,
         contextMessageId,
@@ -210,30 +192,27 @@ export async function POST(request: Request) {
           break
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          // Only retry when the failure is specifically that the
-          // recipient isn't in Meta's allowed list. Any other error
-          // (bad token, invalid template, etc.) bubbles up immediately.
-          if (!isRecipientNotAllowedError(message)) {
+          // For Meta API, we only retry variants on "not allowed" sandbox errors.
+          // For Evolution API, we can safely attempt retry variants if the connection rejects the send.
+          if (config.connection_method === 'meta' && !isRecipientNotAllowedError(message)) {
             throw err
           }
           lastError = err
-          console.warn(`[whatsapp/send] variant "${variant}" rejected by Meta, trying next…`)
+          console.warn(`[whatsapp/send] variant "${variant}" failed, trying next variant…`, message)
         }
       }
 
       if (lastError) throw lastError
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown Meta API error'
-      console.error('Meta API send failed for all variants:', message)
+      const message = err instanceof Error ? err.message : 'Unknown WhatsApp API error'
+      console.error('WhatsApp API send failed for all variants:', message)
       return NextResponse.json(
-        { error: `Meta API error: ${message}` },
+        { error: `WhatsApp API error: ${message}` },
         { status: 502 }
       )
     }
 
-    // If a non-original variant succeeded, update the contact so future
-    // sends go straight through. sanitizePhoneForMeta on workingPhone
-    // will yield workingPhone itself, so re-storing preserves it.
+    // Auto-update contact phone variant if corrector was invoked
     if (workingPhone !== sanitizedPhone) {
       console.log(
         `[whatsapp/send] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
@@ -244,10 +223,7 @@ export async function POST(request: Request) {
         .eq('id', contact.id)
     }
 
-    // Insert message into DB — field names MUST match the messages schema
-    // (see supabase/migrations/001_initial_schema.sql):
-    //   conversation_id, sender_type, content_type, content_text,
-    //   media_url, template_name, message_id, status, created_at
+    // Insert message record into DB
     const { data: messageRecord, error: msgError } = await supabase
       .from('messages')
       .insert({
@@ -267,12 +243,12 @@ export async function POST(request: Request) {
     if (msgError) {
       console.error('Error inserting sent message:', msgError)
       return NextResponse.json(
-        { error: `Message sent to Meta but failed to save to DB: ${msgError.message}` },
+        { error: `Message sent to WhatsApp but failed to save to DB: ${msgError.message}` },
         { status: 500 }
       )
     }
 
-    // Update conversation
+    // Update conversation metrics
     await supabase
       .from('conversations')
       .update({
@@ -293,5 +269,13 @@ export async function POST(request: Request) {
       { error: 'Failed to send message' },
       { status: 500 }
     )
+  }
+}
+
+function decryptSafely(val: string): string {
+  try {
+    return decrypt(val)
+  } catch {
+    return val
   }
 }
