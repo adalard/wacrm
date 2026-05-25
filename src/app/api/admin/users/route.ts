@@ -1,5 +1,18 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+
+// Lazy-initialized admin Supabase client to bypass RLS for directory querying
+let _adminClient: any = null
+function getSupabaseAdmin() {
+  if (!_adminClient) {
+    _adminClient = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+  }
+  return _adminClient
+}
 
 export async function GET() {
   try {
@@ -21,10 +34,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden. Access restricted.' }, { status: 403 })
     }
 
-    // 2) Fetch user directory
-    // We will query profiles and join them with subscriptions, whatsapp_config, and contacts count
-    // In Supabase JS, we can fetch profiles first, then gather subscriptions and stats in bulk
-    const { data: profiles, error: profsErr } = await supabase
+    // 2) Fetch user directory using admin client to bypass RLS
+    const adminDb = getSupabaseAdmin()
+    const { data: profiles, error: profsErr } = await adminDb
       .from('profiles')
       .select('user_id, email, full_name, created_at')
       .order('created_at', { ascending: false })
@@ -34,15 +46,15 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to retrieve profiles' }, { status: 500 })
     }
 
-    const { data: subscriptions, error: subsErr } = await supabase
+    const { data: subscriptions } = await adminDb
       .from('subscriptions')
       .select('user_id, tier, status')
 
-    const { data: configs, error: confsErr } = await supabase
+    const { data: configs } = await adminDb
       .from('whatsapp_config')
       .select('user_id, status')
 
-    const { data: contacts, error: contsErr } = await supabase
+    const { data: contacts } = await adminDb
       .from('contacts')
       .select('user_id')
 

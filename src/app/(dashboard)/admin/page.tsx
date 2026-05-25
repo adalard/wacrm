@@ -376,10 +376,9 @@ export default function AdminDashboard() {
 
   const filteredUsers = usersList.filter((u) => {
     const q = searchQuery.toLowerCase();
-    return (
-      u.email.toLowerCase().includes(q) ||
-      (u.full_name && u.full_name.toLowerCase().includes(q))
-    );
+    const emailMatch = u.email ? u.email.toLowerCase().includes(q) : false;
+    const nameMatch = u.full_name ? u.full_name.toLowerCase().includes(q) : false;
+    return emailMatch || nameMatch;
   });
 
   if (loading) {
