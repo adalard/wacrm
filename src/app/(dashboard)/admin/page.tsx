@@ -144,6 +144,7 @@ export default function AdminDashboard() {
 
       setIsAdmin(true);
       await Promise.all([loadAnalytics(), loadPackages(), loadStripeSettings()]);
+      setLoading(false);
     } catch (err) {
       console.error('Error verifying role:', err);
       setIsAdmin(false);
