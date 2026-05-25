@@ -28,6 +28,8 @@ interface AssigneeTeammate {
   phone: string | null;
   role: 'sales_rep' | 'support_agent' | 'manager';
   created_at: string;
+  invite_token: string | null;
+  invite_status: 'invited' | 'active' | null;
 }
 
 const ROLE_LABELS = {
@@ -38,7 +40,7 @@ const ROLE_LABELS = {
 
 export function TeammatesManager() {
   const supabase = createClient();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, workspaceOwnerId, userRole } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [teammates, setTeammates] = useState<AssigneeTeammate[]>([]);
@@ -66,17 +68,17 @@ export function TeammatesManager() {
       setLoading(false);
       return;
     }
-    fetchTeammates(user.id);
+    fetchTeammates(workspaceOwnerId || user.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id]);
+  }, [authLoading, user?.id, workspaceOwnerId]);
 
-  async function fetchTeammates(userId: string) {
+  async function fetchTeammates(targetUserId: string) {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('assignees')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', targetUserId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -120,8 +122,9 @@ export function TeammatesManager() {
         return;
       }
 
-      const payload = {
-        user_id: user.id,
+      const activeOwnerId = workspaceOwnerId || user.id;
+      const payload: any = {
+        user_id: activeOwnerId,
         name: name.trim(),
         email: email.trim() || null,
         phone: phone.trim() || null,
@@ -131,6 +134,10 @@ export function TeammatesManager() {
 
       if (editingTeammate) {
         // Update operation
+        if (email.trim() && editingTeammate.email !== email.trim()) {
+          payload.invite_status = 'invited';
+        }
+        
         const { error } = await supabase
           .from('assignees')
           .update(payload)
@@ -140,6 +147,8 @@ export function TeammatesManager() {
         toast.success(`Teammate "${name.trim()}" successfully updated!`);
       } else {
         // Insert operation
+        payload.invite_status = email.trim() ? 'invited' : 'active';
+        
         const { error } = await supabase
           .from('assignees')
           .insert(payload);
@@ -149,7 +158,7 @@ export function TeammatesManager() {
       }
 
       setDialogOpen(false);
-      await fetchTeammates(user.id);
+      await fetchTeammates(activeOwnerId);
     } catch (err) {
       console.error('[teammates] Save error:', err);
       toast.error('Failed to save teammate details');
@@ -214,13 +223,15 @@ export function TeammatesManager() {
             Define Sales Representatives and Support Agents to assign conversations and deals to.
           </p>
         </div>
-        <Button
-          onClick={handleOpenCreate}
-          className="bg-violet-600 hover:bg-violet-700 text-white font-semibold self-start"
-        >
-          <Plus className="size-4 mr-1.5" />
-          Add Teammate
-        </Button>
+        {(userRole === 'owner' || userRole === 'manager') && (
+          <Button
+            onClick={handleOpenCreate}
+            className="bg-violet-600 hover:bg-violet-700 text-white font-semibold self-start"
+          >
+            <Plus className="size-4 mr-1.5" />
+            Add Teammate
+          </Button>
+        )}
       </div>
 
       {/* Searchbar */}
@@ -260,14 +271,16 @@ export function TeammatesManager() {
                   <TableHead className="text-slate-400 font-semibold px-6 py-4">Name</TableHead>
                   <TableHead className="text-slate-400 font-semibold px-6 py-4">Role</TableHead>
                   <TableHead className="text-slate-400 font-semibold px-6 py-4">Email</TableHead>
-                  <TableHead className="text-slate-400 font-semibold px-6 py-4">Phone</TableHead>
-                  <TableHead className="text-slate-400 font-semibold px-6 py-4 text-right">Actions</TableHead>
+                  <TableHead className="text-slate-400 font-semibold px-6 py-4">Status & Invite</TableHead>
+                  {(userRole === 'owner' || userRole === 'manager') && (
+                    <TableHead className="text-slate-400 font-semibold px-6 py-4 text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTeammates.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-slate-500 text-xs font-medium">
+                    <TableCell colSpan={userRole === 'owner' || userRole === 'manager' ? 5 : 4} className="text-center py-8 text-slate-500 text-xs font-medium">
                       No matching teammates found.
                     </TableCell>
                   </TableRow>
@@ -299,33 +312,61 @@ export function TeammatesManager() {
                         )}
                       </TableCell>
                       <TableCell className="px-6 py-4">
-                        {teammate.phone ? (
-                          <span className="text-slate-350 text-xs font-medium font-mono flex items-center gap-1.5">
-                            <Phone className="size-3.5 text-slate-500" />
-                            {teammate.phone}
-                          </span>
+                        {teammate.email ? (
+                          <div className="flex items-center gap-2">
+                            {teammate.invite_status === 'active' ? (
+                              <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 px-2 py-0.5 text-[10px]">
+                                Active Member
+                              </Badge>
+                            ) : (
+                              <>
+                                <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/20 px-2 py-0.5 text-[10px] animate-pulse">
+                                  Pending Invite
+                                </Badge>
+                                {(userRole === 'owner' || userRole === 'manager') && teammate.invite_token && (
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                      if (typeof window !== 'undefined') {
+                                        const link = `${window.location.origin}/signup?invite=${teammate.invite_token}`;
+                                        navigator.clipboard.writeText(link);
+                                        toast.success('Copied invitation link!');
+                                      }
+                                    }}
+                                    className="h-6 border-slate-800 bg-slate-950 text-[10px] text-slate-300 hover:text-white px-2"
+                                  >
+                                    Copy Link
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-slate-600 text-xs italic">—</span>
+                          <Badge className="bg-slate-800 text-slate-400 border-slate-700 px-2 py-0.5 text-[10px]">
+                            Virtual Assignee
+                          </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-1.5">
-                          <Button
-                            variant="ghost"
-                            onClick={() => handleOpenEdit(teammate)}
-                            className="text-slate-400 hover:text-white p-2 h-auto text-xs"
-                          >
-                            <Edit2 className="size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            onClick={() => confirmDelete(teammate)}
-                            className="text-red-400 hover:text-red-300 p-2 h-auto text-xs"
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      {(userRole === 'owner' || userRole === 'manager') && (
+                        <TableCell className="px-6 py-4 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleOpenEdit(teammate)}
+                              className="text-slate-400 hover:text-white p-2 h-auto text-xs"
+                            >
+                              <Edit2 className="size-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => confirmDelete(teammate)}
+                              className="text-red-400 hover:text-red-300 p-2 h-auto text-xs"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}

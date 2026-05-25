@@ -22,6 +22,8 @@ interface Profile {
 interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
+  workspaceOwnerId: string | null;
+  userRole: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
   /** Re-fetch the current user's profile row — call after a save from
@@ -40,6 +42,8 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [workspaceOwnerId, setWorkspaceOwnerId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Shared across init, auth-state-change listener, and the exposed
@@ -65,6 +69,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data) setProfile(data);
+
+      // Resolve workspace owner ID and user role
+      const { data: teammate } = await supabase
+        .from("assignees")
+        .select("user_id, role")
+        .eq("member_id", userId)
+        .eq("invite_status", "active")
+        .maybeSingle();
+
+      if (teammate) {
+        setWorkspaceOwnerId(teammate.user_id);
+        setUserRole(teammate.role);
+      } else {
+        setWorkspaceOwnerId(userId);
+        setUserRole("owner");
+      }
     } catch (err) {
       console.error("[AuthProvider] fetchProfile threw:", err);
     }
@@ -120,6 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         fetchProfile(currentUser.id);
       } else {
         setProfile(null);
+        setWorkspaceOwnerId(null);
+        setUserRole(null);
       }
 
       setLoading(false);
@@ -137,6 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    setWorkspaceOwnerId(null);
+    setUserRole(null);
     window.location.href = "/login";
   }, []);
 
@@ -147,7 +171,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, signOut, refreshProfile }}
+      value={{
+        user,
+        profile,
+        workspaceOwnerId,
+        userRole,
+        loading,
+        signOut,
+        refreshProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>
@@ -166,6 +198,8 @@ export function useAuth(): AuthContextValue {
     return {
       user: null,
       profile: null,
+      workspaceOwnerId: null,
+      userRole: null,
       loading: false,
       signOut: async () => {
         window.location.href = "/login";

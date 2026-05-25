@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,47 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [isInvited, setIsInvited] = useState(false);
+  
   const supabase = createClient();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = new URLSearchParams(window.location.search).get("invite");
+    if (!token) return;
+
+    setInviteToken(token);
+
+    const fetchInviteDetails = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("assignees")
+          .select("name, email")
+          .eq("invite_token", token)
+          .eq("invite_status", "invited")
+          .maybeSingle();
+
+        if (error) {
+          console.error("[Signup] Error fetching invite:", error.message);
+          return;
+        }
+
+        if (data) {
+          if (data.name) setFullName(data.name);
+          if (data.email) {
+            setEmail(data.email);
+            setIsInvited(true);
+          }
+        }
+      } catch (err) {
+        console.error("[Signup] Invite fetch threw:", err);
+      }
+    };
+
+    fetchInviteDetails();
+  }, [supabase]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +87,7 @@ export default function SignupPage() {
       options: {
         data: {
           full_name: fullName,
+          invite_token: inviteToken || undefined,
         },
       },
     });
@@ -139,7 +180,8 @@ export default function SignupPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus-visible:border-violet-500 focus-visible:ring-violet-500/20"
+                disabled={isInvited}
+                className="border-slate-700 bg-slate-800 text-white placeholder:text-slate-500 focus-visible:border-violet-500 focus-visible:ring-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 

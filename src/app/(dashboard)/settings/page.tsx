@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Settings, MessageSquare, Tag, User, Terminal, CreditCard, Users } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -12,6 +13,7 @@ import { SessionsCard } from '@/components/settings/sessions-card';
 import { DeveloperApiManager } from '@/components/settings/developer-api';
 import { TeammatesManager } from '@/components/settings/teammates';
 import { BillingManager } from '@/components/settings/billing';
+import { useAuth } from '@/hooks/use-auth';
 
 const TAB_VALUES = ['profile', 'whatsapp', 'templates', 'tags', 'teammates', 'developer', 'billing'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
@@ -23,6 +25,9 @@ function isTabValue(v: string | null): v is TabValue {
 export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { userRole } = useAuth();
+  
+  const isTeammate = userRole === 'sales_rep' || userRole === 'support_agent';
 
   // The URL is the single source of truth for the active tab
   const queryTab = searchParams.get('tab');
@@ -34,12 +39,21 @@ export default function SettingsPage() {
     router.replace(`/settings?${params.toString()}`, { scroll: false });
   };
 
+  // Guard: Automatically redirect teammates who try to access forbidden settings tabs back to Profile settings
+  useEffect(() => {
+    if (isTeammate && (tab === 'billing' || tab === 'developer' || tab === 'whatsapp')) {
+      onChange('profile');
+    }
+  }, [isTeammate, tab]);
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Manage your profile, WhatsApp® integration, message templates, tags, and billing plans.
+          {isTeammate 
+            ? 'Manage your personal profile, credentials, active sessions, templates, and tags.' 
+            : 'Manage your profile, WhatsApp® integration, message templates, tags, teammates, and billing plans.'}
         </p>
       </div>
 
@@ -52,13 +66,17 @@ export default function SettingsPage() {
             <User className="size-4" />
             Profile
           </TabsTrigger>
-          <TabsTrigger
-            value="whatsapp"
-            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-          >
-            <Settings className="size-4" />
-            WhatsApp Config
-          </TabsTrigger>
+          
+          {!isTeammate && (
+            <TabsTrigger
+              value="whatsapp"
+              className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
+            >
+              <Settings className="size-4" />
+              WhatsApp Config
+            </TabsTrigger>
+          )}
+
           <TabsTrigger
             value="templates"
             className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
@@ -66,6 +84,7 @@ export default function SettingsPage() {
             <MessageSquare className="size-4" />
             Templates
           </TabsTrigger>
+          
           <TabsTrigger
             value="tags"
             className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
@@ -73,6 +92,7 @@ export default function SettingsPage() {
             <Tag className="size-4" />
             Tags
           </TabsTrigger>
+          
           <TabsTrigger
             value="teammates"
             className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
@@ -80,20 +100,26 @@ export default function SettingsPage() {
             <Users className="size-4" />
             Teammates
           </TabsTrigger>
-          <TabsTrigger
-            value="developer"
-            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-          >
-            <Terminal className="size-4" />
-            Developer API
-          </TabsTrigger>
-          <TabsTrigger
-            value="billing"
-            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
-          >
-            <CreditCard className="size-4" />
-            Billing & Plans
-          </TabsTrigger>
+          
+          {!isTeammate && (
+            <TabsTrigger
+              value="developer"
+              className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
+            >
+              <Terminal className="size-4" />
+              Developer API
+            </TabsTrigger>
+          )}
+
+          {!isTeammate && (
+            <TabsTrigger
+              value="billing"
+              className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
+            >
+              <CreditCard className="size-4" />
+              Billing & Plans
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
@@ -102,9 +128,11 @@ export default function SettingsPage() {
           <SessionsCard />
         </TabsContent>
 
-        <TabsContent value="whatsapp">
-          <WhatsAppConfig />
-        </TabsContent>
+        {!isTeammate && (
+          <TabsContent value="whatsapp">
+            <WhatsAppConfig />
+          </TabsContent>
+        )}
 
         <TabsContent value="templates">
           <TemplateManager />
@@ -118,13 +146,17 @@ export default function SettingsPage() {
           <TeammatesManager />
         </TabsContent>
 
-        <TabsContent value="developer">
-          <DeveloperApiManager />
-        </TabsContent>
+        {!isTeammate && (
+          <TabsContent value="developer">
+            <DeveloperApiManager />
+          </TabsContent>
+        )}
 
-        <TabsContent value="billing">
-          <BillingManager />
-        </TabsContent>
+        {!isTeammate && (
+          <TabsContent value="billing">
+            <BillingManager />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
