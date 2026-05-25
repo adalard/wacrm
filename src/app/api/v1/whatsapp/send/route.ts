@@ -10,6 +10,7 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import { dispatchExternalWebhook } from '@/lib/api/webhooks'
+import { hasApiAccess } from '@/lib/api/limits'
 
 // Lazy-initialized admin Supabase client to bypass RLS for API endpoints
 let _adminClient: any = null
@@ -39,6 +40,15 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Unauthorized. Invalid or missing Bearer API Key.' },
         { status: 401 }
+      )
+    }
+
+    // Enforce SaaS pricing plan limits
+    const hasAccess = await hasApiAccess(userId)
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: 'Payment Required. Developer API access is locked for Free Starter accounts. Please upgrade to Professional inside Billing Settings.' },
+        { status: 402 }
       )
     }
 

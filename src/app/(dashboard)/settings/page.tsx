@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, MessageSquare, Tag, User, Terminal } from 'lucide-react';
+import { Settings, MessageSquare, Tag, User, Terminal, CreditCard } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { WhatsAppConfig } from '@/components/settings/whatsapp-config';
 import { TemplateManager } from '@/components/settings/template-manager';
@@ -10,8 +10,9 @@ import { ProfileForm } from '@/components/settings/profile-form';
 import { PasswordForm } from '@/components/settings/password-form';
 import { SessionsCard } from '@/components/settings/sessions-card';
 import { DeveloperApiManager } from '@/components/settings/developer-api';
+import { BillingManager } from '@/components/settings/billing';
 
-const TAB_VALUES = ['profile', 'whatsapp', 'templates', 'tags', 'developer'] as const;
+const TAB_VALUES = ['profile', 'whatsapp', 'templates', 'tags', 'developer', 'billing'] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function isTabValue(v: string | null): v is TabValue {
@@ -22,10 +23,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // The URL is the single source of truth for the active tab — no
-  // local state, no sync effect. A previous revision duplicated this
-  // into `useState` + a sync effect, which tripped React 19's
-  // set-state-in-effect rule and was also redundant.
+  // The URL is the single source of truth for the active tab
   const queryTab = searchParams.get('tab');
   const tab: TabValue = isTabValue(queryTab) ? queryTab : 'profile';
 
@@ -40,8 +38,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Manage your profile, WhatsApp® integration, message templates, and
-          tags.
+          Manage your profile, WhatsApp® integration, message templates, tags, and billing plans.
         </p>
       </div>
 
@@ -82,6 +79,13 @@ export default function SettingsPage() {
             <Terminal className="size-4" />
             Developer API
           </TabsTrigger>
+          <TabsTrigger
+            value="billing"
+            className="data-active:bg-slate-800 data-active:text-violet-400 text-slate-400"
+          >
+            <CreditCard className="size-4" />
+            Billing & Plans
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
@@ -104,6 +108,10 @@ export default function SettingsPage() {
 
         <TabsContent value="developer">
           <DeveloperApiManager />
+        </TabsContent>
+
+        <TabsContent value="billing">
+          <BillingManager />
         </TabsContent>
       </Tabs>
     </div>
