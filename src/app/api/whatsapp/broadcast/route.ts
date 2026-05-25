@@ -12,6 +12,7 @@ import {
   rateLimitResponse,
   RATE_LIMITS,
 } from '@/lib/rate-limit'
+import { hasBulkSending, checkBroadcastLimit } from '@/lib/api/limits'
 
 interface BroadcastResult {
   phone: string
@@ -96,6 +97,26 @@ export async function POST(request: Request) {
             'Provide either `recipients` (preferred) or `phone_numbers` — must be a non-empty array',
         },
         { status: 400 }
+      )
+    }
+
+    // Enforce SaaS plan feature gating for bulk sending
+    const isBulkAllowed = await hasBulkSending(user.id)
+    if (!isBulkAllowed) {
+      return NextResponse.json(
+        { error: 'Feature Locked. Bulk broadcasting is locked for Free Starter accounts. Please upgrade to Professional inside Billing Settings.' },
+        { status: 402 }
+      )
+    }
+
+    // Enforce SaaS plan broadcast monthly limit checks
+    const broadcastLimitCheck = await checkBroadcastLimit(user.id, recipients.length)
+    if (!broadcastLimitCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: `Monthly Broadcast Limit Exceeded. You attempted to send to ${recipients.length} recipients, but your remaining monthly limit is ${broadcastLimitCheck.limit - broadcastLimitCheck.count} messages. Please upgrade your plan or wait until next month.`
+        },
+        { status: 402 }
       )
     }
 

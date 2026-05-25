@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getSystemSetting } from '@/lib/api/settings'
 import Stripe from 'stripe'
 
 export async function POST() {
@@ -20,7 +21,9 @@ export async function POST() {
       return NextResponse.json({ error: 'Subscription not found' }, { status: 404 })
     }
 
-    const stripeKey = process.env.STRIPE_SECRET_KEY
+    // Retrieve Stripe Secret Key dynamically
+    const stripeKey = (await getSystemSetting('stripe_secret_key')) || process.env.STRIPE_SECRET_KEY
+
     if (stripeKey && sub.stripe_customer_id) {
       const stripe = new Stripe(stripeKey, { apiVersion: '2023-10-16' as any })
       const portalSession = await stripe.billingPortal.sessions.create({

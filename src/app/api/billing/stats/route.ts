@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getSubscription, TIER_LIMITS } from '@/lib/api/limits'
+import { getSubscription } from '@/lib/api/limits'
 
 export async function GET() {
   try {
@@ -47,13 +47,14 @@ export async function GET() {
       broadcasts?.reduce((acc: number, curr: any) => acc + (curr.total_recipients || 0), 0) || 0
 
     // Resolve plan configuration values
-    const limits = TIER_LIMITS[sub.tier]
+    const contactsLimit = sub.contact_limit
+    const broadcastsLimit = sub.broadcast_limit
 
     return NextResponse.json({
       contactsCount: contactsCount || 0,
-      contactsLimit: limits.contacts,
+      contactsLimit,
       broadcastsCount,
-      broadcastsLimit: limits.broadcastsPerMonth,
+      broadcastsLimit,
       tier: sub.tier,
       status: sub.status,
       currentPeriodEnd: sub.current_period_end,

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { hasScheduledSending } from '@/lib/api/limits'
 
 // GET: Fetch user's scheduled messages
 export async function GET() {
@@ -54,6 +55,15 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
+      )
+    }
+
+    // Enforce SaaS plan limitations
+    const allowed = await hasScheduledSending(user.id)
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Feature Locked. Scheduled sending is locked for Free Starter accounts. Please upgrade to Professional inside Billing Settings.' },
+        { status: 402 }
       )
     }
 

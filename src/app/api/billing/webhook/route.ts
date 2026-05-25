@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getSystemSetting } from '@/lib/api/settings'
 import Stripe from 'stripe'
 
 // Lazy-initialized admin Supabase client to bypass RLS for Webhook database updates
@@ -15,10 +16,12 @@ function supabaseAdmin() {
 }
 
 export async function POST(request: Request) {
-  const stripeKey = process.env.STRIPE_SECRET_KEY
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+  // Retrieve Stripe Secret Key and Webhook Secret dynamically from database settings
+  const stripeKey = (await getSystemSetting('stripe_secret_key')) || process.env.STRIPE_SECRET_KEY
+  const webhookSecret = (await getSystemSetting('stripe_webhook_secret')) || process.env.STRIPE_WEBHOOK_SECRET
 
   if (!stripeKey || !webhookSecret) {
+    console.warn('[stripe-webhook] Webhook endpoint triggered but Stripe key or webhook secret is unconfigured.')
     return NextResponse.json(
       { error: 'Billing webhooks are not configured on this server.' },
       { status: 501 }

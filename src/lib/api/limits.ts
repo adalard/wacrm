@@ -17,35 +17,74 @@ export interface SubscriptionInfo {
   status: string;
   stripe_customer_id: string | null;
   current_period_end: string | null;
+  contact_limit: number;
+  broadcast_limit: number;
+  has_api_access: boolean;
+  has_bulk_sending: boolean;
+  has_scheduled_sending: boolean;
 }
 
-export const TIER_LIMITS = {
+// Fallback plan limits in case database is temporarily offline or unseeded
+export const FALLBACK_LIMITS = {
   free: {
     contacts: 100,
-    broadcastsPerMonth: 50,
-    apiAccess: false,
-    webhookAccess: false,
+    broadcasts: 50,
+    api: false,
+    bulk: false,
+    scheduled: false,
   },
   pro: {
     contacts: Infinity,
-    broadcastsPerMonth: Infinity,
-    apiAccess: true,
-    webhookAccess: true,
+    broadcasts: Infinity,
+    api: true,
+    bulk: true,
+    scheduled: true,
   },
   enterprise: {
     contacts: Infinity,
-    broadcastsPerMonth: Infinity,
-    apiAccess: true,
-    webhookAccess: true,
+    broadcasts: Infinity,
+    api: true,
+    bulk: true,
+    scheduled: true,
   },
 }
 
 /**
- * Resolves the subscription plan and tier details for a tenant user.
+ * Loads a package configuration from the database by its code.
+ */
+export async function getPackageByCode(code: string): Promise<any> {
+  try {
+    const db = supabaseAdmin()
+    const { data: pkg, error } = await db
+      .from('packages')
+      .select('*')
+      .eq('code', code)
+      .maybeSingle()
+
+    if (error || !pkg) return null
+    return {
+      name: pkg.name,
+      code: pkg.code,
+      contact_limit: pkg.contact_limit === -1 ? Infinity : pkg.contact_limit,
+      broadcast_limit: pkg.broadcast_limit === -1 ? Infinity : pkg.broadcast_limit,
+      has_api_access: pkg.has_api_access,
+      has_bulk_sending: pkg.has_bulk_sending,
+      has_scheduled_sending: pkg.has_scheduled_sending,
+    }
+  } catch (err) {
+    console.error(`[limits] Failed to retrieve package "${code}":`, err)
+    return null
+  }
+}
+
+/**
+ * Resolves the subscription plan, tier, and associated limits dynamically from the database.
  */
 export async function getSubscription(userId: string): Promise<SubscriptionInfo> {
   try {
     const db = supabaseAdmin()
+    
+    // 1) Fetch user subscription record
     const { data: sub, error } = await db
       .from('subscriptions')
       .select('*')
@@ -53,32 +92,67 @@ export async function getSubscription(userId: string): Promise<SubscriptionInfo>
       .maybeSingle()
 
     if (error || !sub) {
-      // Graceful fallback to Free plan
+      // Fallback: load Free package details from DB
+      const freePkg = await getPackageByCode('free')
       return {
         tier: 'free',
         status: 'active',
         stripe_customer_id: null,
         current_period_end: null,
+        contact_limit: freePkg?.contact_limit ?? FALLBACK_LIMITS.free.contacts,
+        broadcast_limit: freePkg?.broadcast_limit ?? FALLBACK_LIMITS.free.broadcasts,
+        has_api_access: freePkg?.has_api_access ?? FALLBACK_LIMITS.free.api,
+        has_bulk_sending: freePkg?.has_bulk_sending ?? FALLBACK_LIMITS.free.bulk,
+        has_scheduled_sending: freePkg?.has_scheduled_sending ?? FALLBACK_LIMITS.free.scheduled,
       }
     }
 
-    // Default to Free if status is unpaid or fully expired
+    // Adjust tier to 'free' if subscription has fully expired
     const isPlanExpired = ['unpaid', 'incomplete'].includes(sub.status)
-    const tier = isPlanExpired ? 'free' : (sub.tier as 'free' | 'pro' | 'enterprise')
+    const tierCode = isPlanExpired ? 'free' : (sub.tier as 'free' | 'pro' | 'enterprise')
+
+    // 2) Fetch dynamic package configuration matching tier code
+    const pkg = await getPackageByCode(tierCode)
+
+    if (!pkg) {
+      // Fallback to static boundaries if package is not seeded
+      const fallback = FALLBACK_LIMITS[tierCode]
+      return {
+        tier: tierCode,
+        status: sub.status,
+        stripe_customer_id: sub.stripe_customer_id || null,
+        current_period_end: sub.current_period_end || null,
+        contact_limit: fallback.contacts,
+        broadcast_limit: fallback.broadcasts,
+        has_api_access: fallback.api,
+        has_bulk_sending: fallback.bulk,
+        has_scheduled_sending: fallback.scheduled,
+      }
+    }
 
     return {
-      tier,
+      tier: tierCode,
       status: sub.status,
       stripe_customer_id: sub.stripe_customer_id || null,
       current_period_end: sub.current_period_end || null,
+      contact_limit: pkg.contact_limit,
+      broadcast_limit: pkg.broadcast_limit,
+      has_api_access: pkg.has_api_access,
+      has_bulk_sending: pkg.has_bulk_sending,
+      has_scheduled_sending: pkg.has_scheduled_sending,
     }
   } catch (err) {
-    console.error(`[limits] Error fetching subscription for user ${userId}:`, err)
+    console.error(`[limits] Error fetching subscription/plan for user ${userId}:`, err)
     return {
       tier: 'free',
       status: 'active',
       stripe_customer_id: null,
       current_period_end: null,
+      contact_limit: FALLBACK_LIMITS.free.contacts,
+      broadcast_limit: FALLBACK_LIMITS.free.broadcasts,
+      has_api_access: FALLBACK_LIMITS.free.api,
+      has_bulk_sending: FALLBACK_LIMITS.free.bulk,
+      has_scheduled_sending: FALLBACK_LIMITS.free.scheduled,
     }
   }
 }
@@ -91,7 +165,7 @@ export async function checkContactLimit(
 ): Promise<{ allowed: boolean; count: number; limit: number }> {
   try {
     const sub = await getSubscription(userId)
-    const limit = TIER_LIMITS[sub.tier].contacts
+    const limit = sub.contact_limit
 
     if (limit === Infinity) {
       return { allowed: true, count: 0, limit }
@@ -126,7 +200,7 @@ export async function checkBroadcastLimit(
 ): Promise<{ allowed: boolean; count: number; limit: number }> {
   try {
     const sub = await getSubscription(userId)
-    const limit = TIER_LIMITS[sub.tier].broadcastsPerMonth
+    const limit = sub.broadcast_limit
 
     if (limit === Infinity) {
       return { allowed: true, count: 0, limit }
@@ -164,5 +238,21 @@ export async function checkBroadcastLimit(
  */
 export async function hasApiAccess(userId: string): Promise<boolean> {
   const sub = await getSubscription(userId)
-  return TIER_LIMITS[sub.tier].apiAccess
+  return sub.has_api_access
+}
+
+/**
+ * Checks if the user's plan has bulk sending / broadcasts enabled.
+ */
+export async function hasBulkSending(userId: string): Promise<boolean> {
+  const sub = await getSubscription(userId)
+  return sub.has_bulk_sending
+}
+
+/**
+ * Checks if the user's plan has scheduled messages sending enabled.
+ */
+export async function hasScheduledSending(userId: string): Promise<boolean> {
+  const sub = await getSubscription(userId)
+  return sub.has_scheduled_sending
 }
