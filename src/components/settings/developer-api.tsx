@@ -15,6 +15,7 @@ import {
   Activity,
   CheckCircle2,
   XCircle,
+  Terminal,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
@@ -482,6 +483,113 @@ export function DeveloperApiManager() {
               </CardContent>
             </Card>
           )}
+
+          {/* API Documentation Reference */}
+          <Card className="bg-slate-900 border-slate-800 mt-8 overflow-hidden">
+            <CardHeader className="border-b border-slate-800/80 pb-4">
+              <div className="flex items-center gap-2">
+                <Terminal className="size-5 text-violet-400" />
+                <div>
+                  <CardTitle className="text-white text-base">REST API Reference</CardTitle>
+                  <CardDescription className="text-slate-400 text-xs">
+                    Send WhatsApp messages programmatically from Node-red, Zapier, or any custom client.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+              {/* Endpoint Block */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-slate-200">Endpoint URL</h4>
+                <div className="flex items-center bg-slate-950 border border-slate-800 rounded-md px-3 py-2.5 font-mono text-xs gap-3">
+                  <span className="bg-violet-500/10 text-violet-400 font-bold px-2 py-0.5 rounded border border-violet-500/25 uppercase shrink-0">
+                    POST
+                  </span>
+                  <span className="text-slate-300 select-all break-all flex-1">
+                    {typeof window !== 'undefined' ? `${window.location.origin}/api/v1/whatsapp/send` : '/api/v1/whatsapp/send'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Headers Block */}
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-slate-200">Required Headers</h4>
+                <div className="bg-slate-950 border border-slate-800/80 rounded-md p-3 font-mono text-xs space-y-1.5">
+                  <div className="flex">
+                    <span className="text-slate-500 w-32 shrink-0">Authorization:</span>
+                    <span className="text-slate-300">Bearer wac_sec_YOUR_KEY_HERE</span>
+                  </div>
+                  <div className="flex">
+                    <span className="text-slate-500 w-32 shrink-0">Content-Type:</span>
+                    <span className="text-slate-300">application/json</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payloads Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Text Message */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Text Message Schema</h4>
+                  </div>
+                  <pre className="bg-slate-950 border border-slate-800/80 rounded-md p-3 text-[11px] font-mono text-violet-300 overflow-x-auto select-all leading-relaxed">
+{`{
+  "phone": "+1234567890",
+  "message_type": "text",
+  "content_text": "Hello world from WACRM API!"
+}`}
+                  </pre>
+                </div>
+
+                {/* Template Message */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Template Schema</h4>
+                  </div>
+                  <pre className="bg-slate-950 border border-slate-800/80 rounded-md p-3 text-[11px] font-mono text-violet-300 overflow-x-auto select-all leading-relaxed">
+{`{
+  "phone": "+1234567890",
+  "message_type": "template",
+  "template_name": "appointment_reminder",
+  "template_params": ["John", "10:30 AM", "May 28"]
+}`}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Sample Response and CURL */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-4 border-t border-slate-800/60">
+                {/* HTTP Response */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Response (200 OK)</h4>
+                  <pre className="bg-slate-950 border border-slate-800/80 rounded-md p-3 text-[11px] font-mono text-emerald-400 overflow-x-auto select-all leading-relaxed">
+{`{
+  "success": true,
+  "message_id": "a9bc2385-df04-4b53-8f0a-8bf8c8e14aa1",
+  "whatsapp_message_id": "wamid.HBgLMjQzODQ2NDY..."
+}`}
+                  </pre>
+                </div>
+
+                {/* Curl Outbound */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Outbound cURL Shell</h4>
+                  <pre className="bg-slate-950 border border-slate-800/80 rounded-md p-3 text-[11px] font-mono text-amber-300 overflow-x-auto select-all whitespace-pre-wrap break-all leading-relaxed">
+{`curl -X POST \\
+  ${typeof window !== 'undefined' ? `${window.location.origin}/api/v1/whatsapp/send` : '/api/v1/whatsapp/send'} \\
+  -H "Authorization: Bearer wac_sec_YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "phone": "+1234567890",
+    "message_type": "text",
+    "content_text": "Hello from WACRM!"
+  }'`}
+                  </pre>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
