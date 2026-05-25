@@ -62,7 +62,7 @@ export function DealForm({
   const [notes, setNotes] = useState("");
 
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [assignees, setAssignees] = useState<any[]>([]);
   const [linkedConversation, setLinkedConversation] =
     useState<Conversation | null>(null);
 
@@ -107,13 +107,13 @@ export function DealForm({
     if (!open) return;
     let cancelled = false;
     (async () => {
-      const [c, p] = await Promise.all([
+      const [c, a] = await Promise.all([
         supabase.from("contacts").select("*").order("name"),
-        supabase.from("profiles").select("*").order("full_name"),
+        supabase.from("assignees").select("*").order("name"),
       ]);
       if (cancelled) return;
       setContacts((c.data ?? []) as Contact[]);
-      setProfiles((p.data ?? []) as Profile[]);
+      setAssignees((a.data ?? []) as any[]);
     })();
     return () => {
       cancelled = true;
@@ -346,9 +346,9 @@ export function DealForm({
                 className="h-9 w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 text-sm text-white outline-none focus:border-violet-500"
               >
                 <option value="">Unassigned</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.full_name || p.email}
+                {assignees.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} {a.email ? `(${a.email})` : ""}
                   </option>
                 ))}
               </select>

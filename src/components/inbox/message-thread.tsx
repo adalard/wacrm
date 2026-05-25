@@ -130,23 +130,27 @@ export function MessageThread({
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [replyTo, setReplyTo] = useState<ReplyDraft | null>(null);
 
-  // Profiles are bounded by RLS to rows the current user is allowed to
-  // see — today that's just the current user, but the dropdown keeps the
-  // shape ready for shared-team workspaces without a refactor.
+  // Teammate assignees are queried from the public.assignees table scoped to the user
   useEffect(() => {
     let cancelled = false;
     const supabase = createClient();
     supabase
-      .from("profiles")
+      .from("assignees")
       .select("*")
-      .order("full_name")
+      .order("name")
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) {
-          console.error("Failed to fetch profiles:", error);
+          console.error("Failed to fetch assignees:", error);
           return;
         }
-        setProfiles((data as Profile[]) ?? []);
+        const mapped = (data || []).map((a: any) => ({
+          id: a.id,
+          user_id: a.id, // Links to conversations.assigned_agent_id
+          full_name: a.name,
+          email: a.email,
+        }));
+        setProfiles(mapped as any[]);
       });
     return () => {
       cancelled = true;
