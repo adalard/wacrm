@@ -385,3 +385,21 @@ export interface AutomationLog {
   created_at: string;
   contact?: Contact;
 }
+
+export interface ScheduledMessage {
+  id: string;
+  user_id: string;
+  receiver_phone: string;
+  message_type: 'text' | 'template';
+  content_text?: string;
+  template_name?: string;
+  template_language?: string;
+  template_params?: string[];
+  scheduled_for: string;
+  status: 'pending' | 'processing' | 'sent' | 'failed';
+  error_message?: string;
+  whatsapp_message_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+

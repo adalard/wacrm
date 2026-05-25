@@ -13,6 +13,7 @@ import {
   GitBranch,
   Radio,
   Zap,
+  Calendar,
   Settings,
   LogOut,
   User,
@@ -37,6 +38,7 @@ const navItems = [
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
   { href: "/broadcasts", label: "Broadcasts", icon: Radio },
+  { href: "/scheduler", label: "Scheduler", icon: Calendar },
   { href: "/automations", label: "Automations", icon: Zap },
 ];
 
