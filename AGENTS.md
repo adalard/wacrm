@@ -13,7 +13,8 @@ Examples:
 - `rtk git status`
 - `rtk npm run typecheck`
 - `rtk npm run test`
-- `rtk ls src/`
 - `rtk grep "pattern" src/`
-- `rtk find "*.ts" .`
+- `rtk find "*.ts" src/`  # Preferred over 'ls' on Windows due to PS alias constraints
+- `rtk find "*.*" src/lib/` # Lists all files in src/lib in a compact tree
 <!-- END:rtk-agent-rules -->
+
