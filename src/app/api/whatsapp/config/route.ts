@@ -198,14 +198,21 @@ export async function POST(request: Request) {
       }
 
       // Automatically configure webhooks on the Evolution server
-      const requestUrl = new URL(request.url)
-      let webhookUrl = `${requestUrl.origin}/api/whatsapp/webhook/evolution`
+      let baseOrigin = process.env.NEXT_PUBLIC_APP_URL || '';
+      if (!baseOrigin) {
+        const requestUrl = new URL(request.url);
+        baseOrigin = requestUrl.origin;
+      }
+      // Strip trailing slash if present
+      baseOrigin = baseOrigin.replace(/\/$/, "");
+
+      let webhookUrl = `${baseOrigin}/api/whatsapp/webhook/evolution`;
       
       // Local development Docker network bypass
       if (webhookUrl.includes('localhost') || webhookUrl.includes('127.0.0.1')) {
         webhookUrl = webhookUrl
           .replace('localhost', 'host.docker.internal')
-          .replace('127.0.0.1', 'host.docker.internal')
+          .replace('127.0.0.1', 'host.docker.internal');
       }
 
       try {
