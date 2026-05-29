@@ -116,6 +116,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType; label: string; hint: stri
   { value: "conversation_assigned", label: "Conversation Assigned", hint: "When assigned to an agent" },
   { value: "tag_added", label: "Tag Added", hint: "When a tag is added to a contact" },
   { value: "time_based", label: "Time-Based", hint: "On a recurring schedule" },
+  { value: "api_trigger", label: "Developer API Called", hint: "Trigger this automation by calling the public Developer REST API" },
 ]
 
 function cid(): string {
@@ -393,6 +394,24 @@ function TriggerCard({
                 }
                 className="bg-slate-800 text-white"
               />
+            )}
+            {type === "api_trigger" && (
+              <div className="space-y-1.5">
+                <label className="block text-[11px] font-semibold uppercase text-slate-400">
+                  API Trigger Key
+                </label>
+                <Input
+                  placeholder="e.g. lead_signup"
+                  value={(config.trigger_key as string) ?? ""}
+                  onChange={(e) =>
+                    onConfigChange({ ...config, trigger_key: e.target.value.trim().toLowerCase() })
+                  }
+                  className="bg-slate-800 text-white font-mono text-xs"
+                />
+                <p className="text-[10px] leading-normal text-slate-500">
+                  Make a POST request to <code>/api/v1/automations/trigger</code> with this key.
+                </p>
+              </div>
             )}
           </div>
         )}

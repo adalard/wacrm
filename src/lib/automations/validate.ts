@@ -168,6 +168,10 @@ export function validateTriggerForActivation(
     if (!nonEmpty(cfg.tag_id)) {
       issues.push({ path: 'trigger.tag_id', message: 'tag is required' })
     }
+  } else if (triggerType === 'api_trigger') {
+    if (!nonEmpty(cfg.trigger_key)) {
+      issues.push({ path: 'trigger.trigger_key', message: 'API Trigger Key is required' })
+    }
   }
 
   return issues

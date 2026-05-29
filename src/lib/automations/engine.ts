@@ -32,6 +32,8 @@ export interface AutomationContext {
   tag_id?: string
   /** Agent the conversation was assigned to, for conversation_assigned. */
   agent_id?: string
+  /** The specific API trigger key passed by developers, for api_trigger. */
+  api_trigger_key?: string
 }
 
 export interface DispatchInput {
@@ -475,6 +477,13 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
 }
 
 function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
+  if (automation.trigger_type === 'api_trigger') {
+    const cfg = automation.trigger_config as { trigger_key?: string }
+    const key = (ctx?.api_trigger_key ?? '').toString().trim().toLowerCase()
+    const target = (cfg?.trigger_key ?? '').toString().trim().toLowerCase()
+    return key !== '' && key === target
+  }
+
   if (automation.trigger_type !== 'keyword_match') return true
   const cfg = automation.trigger_config as KeywordMatchTriggerConfig
   if (!cfg?.keywords || cfg.keywords.length === 0) return false

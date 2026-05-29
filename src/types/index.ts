@@ -232,7 +232,8 @@ export type AutomationTriggerType =
   | 'new_contact_created'
   | 'conversation_assigned'
   | 'tag_added'
-  | 'time_based';
+  | 'time_based'
+  | 'api_trigger';
 
 export type AutomationStepType =
   | 'send_message'
