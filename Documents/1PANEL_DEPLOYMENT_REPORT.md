@@ -1,0 +1,195 @@
+# WACRM 1Panel Deployment Report
+
+**Generated:** May 31, 2026  
+**Project:** WACRM - WhatsApp CRM (Full Stack)  
+**Server IP:** 74.113.234.8  
+
+---
+
+## 📊 Server Environment Summary
+
+| Property | Value |
+|----------|-------|
+| **Hostname** | 1net |
+| **OS** | Ubuntu 24.04 (Debian family) |
+| **Kernel** | 6.8.0-117-generic (x86_64) |
+| **Virtualization** | KVM Guest |
+| **CPU** | Intel Xeon (SapphireRapids) - 1 core |
+| **RAM** | ~1 GB (960 MB total) |
+| **Disk** | 20 GB total (~14.3 GB free) |
+| **Public IP** | 74.113.234.8 |
+
+---
+
+## 🚀 1Panel Setup Status
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| **OpenResty** | ✅ Running | v1.29.2.5-0-noble |
+| **wacrm.1netsoft.com** | ✅ Running | Reverse proxy → localhost:3000 |
+| **evolution.1netsoft.com** | ✅ Running | Reverse proxy → localhost:8080 |
+| **SSL (wacrm)** | ✅ Ready | Let's Encrypt, expires Aug 29, 2026 |
+| **SSL (evolution)** | ⚠️ Pending | Requires DNS A record first |
+
+## 🐳 Docker Stack (docker-compose.production.yml)
+
+| Container | Image | Port | Role |
+|-----------|-------|------|------|
+| **wacrm-app** | Custom (Dockerfile) | 3000 | Next.js CRM application |
+| **wacrm-evolution-api** | evoapicloud/evolution-api:latest | 8080 | WhatsApp API gateway |
+| **wacrm-evolution-postgres** | postgres:15-alpine | 54322 | Evolution database |
+| **wacrm-evolution-redis** | redis:7-alpine | 63799 | Evolution cache |
+
+---
+
+## 🔧 Remaining Steps
+
+### Step 1: DNS Configuration
+
+Add these A records at your `1netsoft.com` DNS provider:
+
+| Type | Name | Value | TTL |
+|------|------|-------|-----|
+| A | wacrm | 74.113.234.8 | 300 |
+| A | evolution | 74.113.234.8 | 300 |
+
+### Step 2: Deploy Docker Stack on Server
+
+SSH into the server and run:
+
+```bash
+# Clone repo
+cd /opt && git clone <your-repo-url> wacrm && cd wacrm
+
+# Or run the deploy script directly:
+chmod +x Documents/deploy.sh && bash Documents/deploy.sh
+```
+
+Or manually:
+
+```bash
+cd /opt/wacrm
+
+# Create .env.local (already included in deploy.sh)
+# Build and start all 4 containers
+docker compose -f docker-compose.production.yml up -d --build
+
+# Verify
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep wacrm
+```
+
+### Step 3: Retry SSL for evolution.1netsoft.com
+
+After DNS propagates, re-apply SSL in 1Panel:
+1. Go to **Website** → **SSL** → **evolution.1netsoft.com**
+2. Re-apply Let's Encrypt certificate
+
+### Step 4: Apply Supabase Migrations
+
+```bash
+npx supabase link --project-ref kqsappnzfabxnqmwzeec
+npx supabase db push
+```
+
+16 migration files will be applied (001–016).
+
+---
+
+## 📁 Project Structure
+
+```
+wacrm/
+├── Dockerfile              # Multi-stage production build
+├── docker-compose.yml      # Docker orchestration
+├── docker-compose.evolution.yml  # Evolution API integration
+├── next.config.ts          # Next.js config (standalone output)
+├── package.json            # Dependencies (Node.js ≥20.0.0)
+├── src/                    # Application source code
+├── public/                 # Static assets
+└── supabase/migrations/    # 16 SQL migration files
+```
+
+---
+
+## 🔒 Security Features
+
+The application includes:
+
+- **HSTS** - Strict Transport Security
+- **CSP** - Content Security Policy (report-only mode)
+- **X-Frame-Options** - Clickjacking protection (DENY)
+- **X-Content-Type-Options** - MIME sniffing protection
+- **Referrer-Policy** - Strict origin referrer
+- **Permissions-Policy** - Camera/microphone/geolocation disabled
+- **AES-256-GCM** - WhatsApp token encryption
+- **RLS** - Row Level Security on all tables
+
+---
+
+## 🌐 DNS Configuration
+
+Ensure your DNS is configured:
+
+| Record Type | Name | Value | TTL |
+|-------------|------|-------|-----|
+| A | wacrm | 74.113.234.8 | 300 |
+
+---
+
+## 📋 Post-Deployment Checklist
+
+- [ ] OpenResty running
+- [ ] Website `wacrm.1net.my` created with reverse proxy
+- [ ] SSL certificate applied
+- [ ] Docker container running on port 3000
+- [ ] Environment variables configured
+- [ ] Supabase migrations applied
+- [ ] DNS A record pointing to server IP
+- [ ] Test login at `https://wacrm.1net.my/login`
+
+---
+
+## 🆘 Troubleshooting
+
+### Container not starting
+```bash
+docker logs wacrm-app
+```
+
+### Port 3000 already in use
+```bash
+docker ps -a
+docker stop <container_id>
+```
+
+### SSL certificate issues
+- Ensure DNS is propagated: `dig wacrm.1net.my`
+- Check Let's Encrypt rate limits
+- Verify domain ownership
+
+### OpenResty not starting
+```bash
+docker logs openresty
+```
+
+---
+
+## 📞 Access URLs
+
+| Service | URL |
+|---------|-----|
+| **WACRM App** | https://wacrm.1netsoft.com |
+| **Evolution API** | https://evolution.1netsoft.com |
+| **1Panel Dashboard** | https://74.113.234.8:PORT |
+
+## 📄 Deployment Files
+
+| File | Purpose |
+|------|---------|
+| `docker-compose.production.yml` | Unified compose file (all 4 services) |
+| `Documents/deploy.sh` | Automated server deployment script |
+| `Documents/1PANEL_DEPLOYMENT_REPORT.md` | This report |
+
+---
+
+*Report generated by Cascade AI Assistant — May 31, 2026*
