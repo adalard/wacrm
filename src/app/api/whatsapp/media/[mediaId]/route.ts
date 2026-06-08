@@ -45,6 +45,71 @@ export async function GET(
       )
     }
 
+    const connectionMethod = config.connection_method || 'meta'
+
+    if (connectionMethod === 'evolution') {
+      let apiKey = ''
+      try {
+        apiKey = decrypt(config.evolution_api_key)
+      } catch {
+        apiKey = config.evolution_api_key || ''
+      }
+      const serverUrl = config.evolution_server_url
+      const instanceName = config.evolution_instance_name
+
+      if (!serverUrl || !apiKey || !instanceName) {
+        return NextResponse.json(
+          { error: 'Evolution API not configured correctly' },
+          { status: 400 }
+        )
+      }
+
+      const url = `${serverUrl.replace(/\/+$/, '')}/chat/getBase64FromMediaMessage/${instanceName}`
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: apiKey,
+        },
+        body: JSON.stringify({
+          message: {
+            key: {
+              id: mediaId,
+            },
+          },
+          convertToMp4: false,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '')
+        console.error('[media/route GET] Evolution API error:', response.status, errorText)
+        return NextResponse.json(
+          { error: 'Failed to fetch media from Evolution server' },
+          { status: response.status }
+        )
+      }
+
+      const mediaData = await response.json()
+      if (!mediaData.base64) {
+        return NextResponse.json(
+          { error: 'No media base64 data returned' },
+          { status: 404 }
+        )
+      }
+
+      const buffer = Buffer.from(mediaData.base64, 'base64')
+      const contentType = mediaData.mimetype || 'application/octet-stream'
+
+      return new Response(new Uint8Array(buffer), {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=86400',
+        },
+      })
+    }
+
     const accessToken = decrypt(config.access_token)
 
     // Get the download URL from Meta

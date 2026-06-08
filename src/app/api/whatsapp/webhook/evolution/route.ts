@@ -131,7 +131,7 @@ async function handleInboundMessage(
   if (!conversation) return
 
   // Parse message content
-  const { contentText, mediaUrl, contentType } = parseEvolutionMessageContent(data)
+  const { contentText, mediaUrl, contentType } = parseEvolutionMessageContent(data, messageId)
 
   // Verify that we haven't already inserted this message (deduplication)
   const { data: existing } = await db
@@ -250,7 +250,7 @@ async function syncOutboundMessage(db: any, userId: string, phone: string, messa
 
   if (existing) return
 
-  const { contentText, mediaUrl, contentType } = parseEvolutionMessageContent(data)
+  const { contentText, mediaUrl, contentType } = parseEvolutionMessageContent(data, messageId)
 
   // Insert outgoing message
   const { data: insertedMsg } = await db.from('messages').insert({
@@ -355,7 +355,7 @@ async function handleStatusReceipt(db: any, messageId: string, statusVal: number
 // Utility Helpers
 // ============================================================
 
-function parseEvolutionMessageContent(data: any): {
+function parseEvolutionMessageContent(data: any, messageId: string): {
   contentText: string | null
   mediaUrl: string | null
   contentType: 'text' | 'image' | 'video' | 'document' | 'audio' | 'location'
@@ -377,7 +377,7 @@ function parseEvolutionMessageContent(data: any): {
   if (message.imageMessage) {
     return {
       contentText: message.imageMessage.caption || null,
-      mediaUrl: message.imageMessage.url || null,
+      mediaUrl: `/api/whatsapp/media/${messageId}`,
       contentType: 'image',
     }
   }
@@ -386,7 +386,7 @@ function parseEvolutionMessageContent(data: any): {
   if (message.videoMessage) {
     return {
       contentText: message.videoMessage.caption || null,
-      mediaUrl: message.videoMessage.url || null,
+      mediaUrl: `/api/whatsapp/media/${messageId}`,
       contentType: 'video',
     }
   }
@@ -395,7 +395,7 @@ function parseEvolutionMessageContent(data: any): {
   if (message.documentMessage) {
     return {
       contentText: message.documentMessage.caption || message.documentMessage.title || null,
-      mediaUrl: message.documentMessage.url || null,
+      mediaUrl: `/api/whatsapp/media/${messageId}`,
       contentType: 'document',
     }
   }
@@ -404,7 +404,7 @@ function parseEvolutionMessageContent(data: any): {
   if (message.audioMessage) {
     return {
       contentText: null,
-      mediaUrl: message.audioMessage.url || null,
+      mediaUrl: `/api/whatsapp/media/${messageId}`,
       contentType: 'audio',
     }
   }
