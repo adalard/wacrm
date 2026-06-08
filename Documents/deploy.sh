@@ -36,8 +36,8 @@ cat > .env.local << 'ENVEOF'
 NODE_ENV=production
 AUTOMATION_CRON_SECRET=your_automation_cron_secret
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+SUPABASE_SECRET_KEY=your_supabase_secret_key
 ENCRYPTION_KEY=your_whatsapp_token_encryption_key
 META_APP_SECRET=your_meta_app_secret
 NEXT_PUBLIC_SITE_URL=https://your-domain.com

@@ -106,8 +106,8 @@ Your WACRM instance requires environmental secrets (Supabase tokens, Stripe API 
    | Key | Example Value | Purpose |
    | :--- | :--- | :--- |
    | `NEXT_PUBLIC_SUPABASE_URL` | `https://yourproj.supabase.co` | Supabase API connection endpoint |
-   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5c...` | Supabase Client authorization key |
-   | `SUPABASE_SERVICE_ROLE_KEY` | `eyJhbGciOiJIUzI1NiIsInR5c...` | Admin key to bypass RLS in stats routes |
+   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `eyJhbGciOiJIUzI1NiIsInR5c...` | Supabase Client authorization key |
+   | `SUPABASE_SECRET_KEY` | `eyJhbGciOiJIUzI1NiIsInR5c...` | Admin key to bypass RLS in stats routes |
    | `STRIPE_SECRET_KEY` | `sk_live_51P...` | Stripe payment gateway live key |
    | `STRIPE_WEBHOOK_SECRET` | `whsec_...` | Stripe webhook verification key |
    | `NEXT_PUBLIC_APP_URL` | `https://crm.yourdomain.com` | Base URL of your cPanel website |
