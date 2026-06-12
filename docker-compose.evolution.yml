@@ -33,7 +33,7 @@ services:
     container_name: wacrm-evolution-api
     restart: always
     ports:
-      - "443:443"
+      - "443:8080"
     volumes:
       - ./certs:/certs:ro
     environment:
@@ -60,7 +60,6 @@ services:
       - CONFIG_SESSION_PHONE_CLIENT=wacrm
 
       # SSL Config
-      - PORT=443
       - SERVER_TYPE=https
       - SSL_CONF_PRIVKEY=/certs/evolution.key
       - SSL_CONF_FULLCHAIN=/certs/evolution.crt

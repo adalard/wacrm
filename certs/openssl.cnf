@@ -3,8 +3,8 @@ distinguished_name = req_distinguished_name
 prompt = no
 
 [req_distinguished_name]
-C = US
-ST = State
-L = City
-O = Organization
+C = MY
+ST = Selangor
+L = Puchong
+O = 1NetSoft
 CN = localhost
