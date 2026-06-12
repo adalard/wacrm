@@ -501,7 +501,7 @@ export default function InboxPage() {
         </div>
 
         {/* Right panel: Contact sidebar — desktop only. */}
-        <div className="hidden lg:block">
+        <div className="hidden lg:block h-full">
           <ContactSidebar contact={activeContact} />
         </div>
       </div>
