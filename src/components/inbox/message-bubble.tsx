@@ -12,6 +12,7 @@ import {
   MapPin,
   LayoutTemplate,
   ImageOff,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -52,7 +53,15 @@ function MediaUnavailable({ label }: { label: string }) {
   );
 }
 
-function MediaImage({ url, alt }: { url: string; alt: string }) {
+function MediaImage({
+  url,
+  alt,
+  filename,
+}: {
+  url: string;
+  alt: string;
+  filename?: string;
+}) {
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -106,12 +115,24 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
   }
 
   return (
-    <img
-      src={src ?? ""}
-      alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
-      onError={() => setError(true)}
-    />
+    <div className="relative group max-h-64 max-w-60 rounded-lg overflow-hidden">
+      <img
+        src={src ?? ""}
+        alt={alt}
+        className="max-h-64 max-w-60 rounded-lg object-cover"
+        onError={() => setError(true)}
+      />
+      {src && (
+        <a
+          href={src}
+          download={filename || "image.jpg"}
+          className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-white opacity-0 transition-opacity duration-200 hover:bg-slate-950 group-hover:opacity-100"
+          title="Download image"
+        >
+          <Download className="h-4 w-4" />
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -128,7 +149,11 @@ function MessageContent({ message }: { message: Message }) {
       return (
         <div>
           {message.media_url ? (
-            <MediaImage url={message.media_url} alt="Shared image" />
+            <MediaImage
+              url={message.media_url}
+              alt="Shared image"
+              filename={`image_${message.message_id || message.id}.jpg`}
+            />
           ) : (
             <MediaUnavailable label="Image" />
           )}
