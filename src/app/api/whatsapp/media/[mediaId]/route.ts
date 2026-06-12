@@ -3,6 +3,39 @@ import { createClient } from '@/lib/supabase/server'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 
+function getExtensionFromMime(mime: string): string {
+  const map: Record<string, string> = {
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-excel': 'xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'application/zip': 'zip',
+    'application/x-tar': 'tar',
+    'application/x-rar-compressed': 'rar',
+    'application/x-7z-compressed': '7z',
+    'text/plain': 'txt',
+    'text/csv': 'csv',
+    'text/html': 'html',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/svg+xml': 'svg',
+    'video/mp4': 'mp4',
+    'video/3gpp': '3gp',
+    'video/quicktime': 'mov',
+    'audio/mpeg': 'mp3',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'audio/webm': 'webm',
+    'audio/aac': 'aac',
+  }
+  return map[mime.toLowerCase().split(';')[0].trim()] || ''
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ mediaId: string }> }
@@ -46,6 +79,9 @@ export async function GET(
     }
 
     const connectionMethod = config.connection_method || 'meta'
+    let buffer: Buffer
+    let contentType: string
+    let evolutionFileName: string | undefined
 
     if (connectionMethod === 'evolution') {
       let apiKey = ''
@@ -98,34 +134,54 @@ export async function GET(
         )
       }
 
-      const buffer = Buffer.from(mediaData.base64, 'base64')
-      const contentType = mediaData.mimetype || 'application/octet-stream'
+      buffer = Buffer.from(mediaData.base64, 'base64')
+      contentType = mediaData.mimetype || 'application/octet-stream'
+      evolutionFileName = mediaData.fileName
+    } else {
+      const accessToken = decrypt(config.access_token)
 
-      return new Response(new Uint8Array(buffer), {
-        status: 200,
-        headers: {
-          'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=86400',
-        },
+      // Get the download URL from Meta
+      const mediaInfo = await getMediaUrl({ mediaId, accessToken })
+
+      // Download the binary data
+      const downloadResult = await downloadMedia({
+        downloadUrl: mediaInfo.url,
+        accessToken,
       })
+      buffer = downloadResult.buffer
+      contentType = downloadResult.contentType || mediaInfo.mimeType || 'application/octet-stream'
     }
 
-    const accessToken = decrypt(config.access_token)
+    // Try to get filename from messages DB
+    const { data: msg } = await supabase
+      .from('messages')
+      .select('content_text, content_type')
+      .eq('message_id', mediaId)
+      .maybeSingle()
 
-    // Get the download URL from Meta
-    const mediaInfo = await getMediaUrl({ mediaId, accessToken })
+    const dbFilename = msg?.content_text
+    const isImage = contentType.startsWith('image/')
+    const isVideo = contentType.startsWith('video/')
+    const isAudio = contentType.startsWith('audio/')
+    const isDocument = !isImage && !isVideo && !isAudio
 
-    // Download the binary data
-    const { buffer, contentType } = await downloadMedia({
-      downloadUrl: mediaInfo.url,
-      accessToken,
-    })
+    let filename = dbFilename || evolutionFileName
+    if (!filename) {
+      const ext = getExtensionFromMime(contentType)
+      filename = ext ? `file_${mediaId}.${ext}` : `file_${mediaId}`
+    }
+
+    // Ensure the filename doesn't contain path traversal or invalid characters
+    const cleanFilename = filename.replace(/[\/\\]/g, '_')
+    const safeFilename = cleanFilename.replace(/"/g, '\\"')
+    const disposition = isDocument ? 'attachment' : 'inline'
 
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
-        'Content-Type': contentType || mediaInfo.mimeType || 'application/octet-stream',
+        'Content-Type': contentType,
         'Cache-Control': 'public, max-age=86400',
+        'Content-Disposition': `${disposition}; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(cleanFilename)}`
       },
     })
   } catch (error) {
