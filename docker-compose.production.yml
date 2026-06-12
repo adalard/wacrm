@@ -16,6 +16,7 @@ services:
       - PORT=3000
       - HOSTNAME=0.0.0.0
       - NODE_ENV=production
+      - NODE_TLS_REJECT_UNAUTHORIZED=0 # Allow self-signed certificates for local/internal connections
     depends_on:
       evolution-api:
         condition: service_started
@@ -23,14 +24,16 @@ services:
       - "host.docker.internal:host-gateway"
 
   # ============================================================
-  # Evolution API — WhatsApp Business API Gateway (port 8080)
+  # Evolution API — WhatsApp Business API Gateway (port 443)
   # ============================================================
   evolution-api:
     image: evoapicloud/evolution-api:latest
     container_name: wacrm-evolution-api
     restart: always
     ports:
-      - "8080:8080"
+      - "443:443"
+    volumes:
+      - ./certs:/certs:ro
     environment:
       # Authentication
       - AUTHENTICATION_TYPE=apikey
@@ -52,6 +55,12 @@ services:
       # Sessions Settings
       - CONFIG_SESSION_PHONE_NAME=Chrome
       - CONFIG_SESSION_PHONE_CLIENT=wacrm
+
+      # SSL Config
+      - PORT=443
+      - SERVER_TYPE=https
+      - SSL_CONF_PRIVKEY=/certs/evolution.key
+      - SSL_CONF_FULLCHAIN=/certs/evolution.crt
     depends_on:
       postgres:
         condition: service_healthy
